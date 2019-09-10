@@ -130,7 +130,8 @@ function compareOrganisationUnits(ouPair, level) {
 
 async function saveToFiles() {
   _.keys(resultAccum).forEach(async level => {
-    const matchedCSV = new objectsToCSV(resultAccum[level]);
+    const sortedOUs = _.sortBy(resultAccum[level], diff => _.keys(diff).length);
+    const matchedCSV = new objectsToCSV(sortedOUs.reverse());
     await matchedCSV.toDisk(`results/matched-ous-level${level}.csv`);
     //const unmatchedCSV = new objectsToCSV(unmatched[level]);
   });
