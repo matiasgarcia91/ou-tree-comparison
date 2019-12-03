@@ -27,10 +27,33 @@ const MAL_ROOT_OU = argv.malRoot;
 const MAX_DEPTH = 4;
 let unmatched = { 1: [], 2: [], 3: [], 4: [] };
 let resultAccum = { 1: [], 2: [], 3: [], 4: [] };
+let whoDataValuesByOu = { dataValues: {}, trackedEntityInstances: {}, programStageInstances: {}};
+let malDataValuesByOu = { dataValues: {}, trackedEntityInstances: {}, programStageInstances: {}};
 
 async function runComparison() {
+  await fetchDataCounts();
   await fetchOUsById([WHO_ROOT_OU], [MAL_ROOT_OU], 1);
   setTimeout(saveToFiles, 4000);
+}
+
+function lookup(data) {
+  whoDataValuesByOu.dataValues[data[0]] = data[1];
+}
+
+async function fetchDataCounts() {
+  try {
+    const {
+      data: {listGrid: {rows: whoRawDataValues} }
+    } = await whoAxios.get(`sqlViews/UaXWNBvpkJ3/data?paging=false`);
+    const {
+      data: {listGrid: {rows: malRawDataValues} }
+    } = await whoAxios.get(`sqlViews/GGxsaAHqDlJ/data?paging=false`);
+    whoRawDataValues.forEach(x => whoDataValuesByOu.dataValues[x[0]] = x[1]);
+    malRawDataValues.forEach(x => malDataValuesByOu.dataValues[x[0]] = x[1]);
+    console.log(whoDataValuesByOu)
+  } catch (e) {
+    console.log(e)
+  }
 }
 
 async function fetchOUsById(idsWHO, idsMAL, level = 1) {
@@ -168,6 +191,15 @@ async function saveToFiles() {
 
 function addChildrenNumberToOu(ou) {
   return { ...ou, numberOfChildren: ou.children.length };
+}
+
+function incrementOUDataValues(ou, datavalues, trackedEntityInstances, programStageInstances) {
+  return {
+    ...ou,
+    dataValuesCount: ou.hasAttribute(dataValuesCount) ? ou.dataValuesCount + datavalues : datavalues,
+    trackedEntitiesInstancesCount: ou.hasAttribute(trackedEntityInstancesCount) ? ou.trackedEntitiesInstancesCount + trackedEntityInstances : trackedEntityInstances,
+    programStageInstancesCount: ou.hasAttribute(programStageInstancesCount) ? ou.programStageInstancesCount + programStageInstances : programStageInstances
+  }
 }
 
 runComparison();

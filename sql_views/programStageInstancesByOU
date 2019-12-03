@@ -1,0 +1,1 @@
+SELECT ou.uid, COUNT(*) FROM programstageinstance psi INNER JOIN organisationunit ou ON (ou.organisationunitid = psi.organisationunitid) GROUP BY ou.uid;
