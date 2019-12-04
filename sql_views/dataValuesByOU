@@ -1,3 +1,0 @@
-SELECT ou.uid, COUNT(*)
-FROM datavalue dv INNER JOIN organisationunit ou
-ON (ou.organisationunitid = dv.sourceid) GROUP BY ou.uid;

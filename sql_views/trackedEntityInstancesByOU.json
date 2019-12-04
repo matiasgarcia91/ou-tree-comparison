@@ -1,0 +1,7 @@
+{
+  "sqlQuery": ";",
+  "description": "Query gathering all the tracked entity instances per organisation unit id.",
+  "type": "QUERY",
+  "name": "trackedEntityInstancesByOU",
+  "cacheStrategy": "NO_CACHE"
+}

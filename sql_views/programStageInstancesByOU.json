@@ -1,0 +1,7 @@
+{
+  "sqlQuery": "SELECT ou.uid, COUNT(*) FROM programstageinstance psi INNER JOIN organisationunit ou ON (ou.organisationunitid = psi.organisationunitid) GROUP BY ou.uid;",
+  "description": "Query gathering all the porgram stage instances per organisation unit id.",
+  "type": "QUERY",
+  "name": "programStageInstancesByOU",
+  "cacheStrategy": "NO_CACHE"
+}
