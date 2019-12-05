@@ -1,5 +1,5 @@
 {
-  "sqlQuery": "SELECT ou.uid, COUNT(*) FROM datavalue dv INNER JOIN organisationunit ou ON (ou.organisationunitid = dv.sourceid) GROUP BY ou.uid;",
+  "sqlQuery": "select ou.uid, COUNT(*) from datavalue dv inner join organisationunit ou on (ou.organisationunitid = dv.sourceid) where (ou.hierarchyLevel <= 5) group by ou.uid;",
   "description": "Query gathering all the data values per organisation unit id.",
   "type": "QUERY",
   "name": "dataValuesByOu",

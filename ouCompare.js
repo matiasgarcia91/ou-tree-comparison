@@ -3,7 +3,7 @@ const _ = require("lodash");
 const objectsToCSV = require("objects-to-csv");
 var argv = require("minimist")(process.argv.slice(2));
 
-const argKeys = ["whoRoot", "malRoot", "whoURL", "malURL", "user", "pass"];
+const argKeys = ["whoRoot", "malRoot", "whoURL", "malURL", "user", "pass", "whoViews", "malViews"];
 
 argKeys.forEach(k => {
   if (!_.includes(_.keys(argv), k)) {
@@ -12,7 +12,7 @@ argKeys.forEach(k => {
 });
 
 const fieldFilter =
-  ":all,parent[name],children[id,name],!id,!href,!created,!dimensionItem,!lastUpdatedBy,!user,!users,!dataSets,!programs,!lastUpdated,!coordinates,!ancestors,!organisationUnitGroups";
+  ":all,parent[name],children[id,name],!href,!created,!dimensionItem,!lastUpdatedBy,!user,!users,!dataSets,!programs,!lastUpdated,!coordinates,!ancestors,!organisationUnitGroups";
 
 const whoAxios = axios.create({
   baseURL: `http://${argv.user}:${argv.pass}@${argv.whoURL}/api`
@@ -27,30 +27,47 @@ const MAL_ROOT_OU = argv.malRoot;
 const MAX_DEPTH = 4;
 let unmatched = { 1: [], 2: [], 3: [], 4: [] };
 let resultAccum = { 1: [], 2: [], 3: [], 4: [] };
+const WHO_VIEWS = JSON.parse(argv.whoViews);
+const MAL_VIEWS = JSON.parse(argv.malViews);
+
 let whoDataValuesByOu = { dataValues: {}, trackedEntityInstances: {}, programStageInstances: {}};
 let malDataValuesByOu = { dataValues: {}, trackedEntityInstances: {}, programStageInstances: {}};
+let whoOrgUnitTree = {};
+let malOrgUnitTree = {};
 
 async function runComparison() {
   await fetchDataCounts();
   await fetchOUsById([WHO_ROOT_OU], [MAL_ROOT_OU], 1);
-  setTimeout(saveToFiles, 4000);
+  setTimeout(saveToFiles, 5000);
 }
 
-function lookup(data) {
-  whoDataValuesByOu.dataValues[data[0]] = data[1];
-}
 
 async function fetchDataCounts() {
   try {
     const {
       data: {listGrid: {rows: whoRawDataValues} }
-    } = await whoAxios.get(`sqlViews/UaXWNBvpkJ3/data?paging=false`);
+    } = await whoAxios.get(`sqlViews/${WHO_VIEWS[0]}/data.json?paging=false`);
     const {
       data: {listGrid: {rows: malRawDataValues} }
-    } = await whoAxios.get(`sqlViews/GGxsaAHqDlJ/data?paging=false`);
+    } = await malAxios.get(`sqlViews/${MAL_VIEWS[0]}/data.json?paging=false`);
+    const {
+      data: {listGrid: {rows: whoRawProgramStageInstances} }
+    } = await whoAxios.get(`sqlViews/${WHO_VIEWS[1]}/data.json?paging=false`);
+    const {
+      data: {listGrid: {rows: malRawProgramStageInstances} }
+    } = await malAxios.get(`sqlViews/${MAL_VIEWS[1]}/data.json?paging=false`);
+    const {
+      data: {listGrid: {rows: whoRawTrackedEntityInstances} }
+    } = await whoAxios.get(`sqlViews/${WHO_VIEWS[2]}/data.json?paging=false`);
+    const {
+      data: {listGrid: {rows: malRawTrackedEntityInstances} }
+    } = await malAxios.get(`sqlViews/${MAL_VIEWS[2]}/data.json?paging=false`);
     whoRawDataValues.forEach(x => whoDataValuesByOu.dataValues[x[0]] = x[1]);
     malRawDataValues.forEach(x => malDataValuesByOu.dataValues[x[0]] = x[1]);
-    console.log(whoDataValuesByOu)
+    whoRawProgramStageInstances.forEach(x => whoDataValuesByOu.programStageInstances[x[0]] = x[1]);
+    malRawProgramStageInstances.forEach(x => malDataValuesByOu.programStageInstances[x[0]] = x[1]);
+    whoRawTrackedEntityInstances.forEach(x => whoDataValuesByOu.trackedEntityInstances[x[0]] = x[1]);
+    malRawTrackedEntityInstances.forEach(x => malDataValuesByOu.trackedEntityInstances[x[0]] = x[1]);
   } catch (e) {
     console.log(e)
   }
@@ -73,30 +90,30 @@ async function fetchOUsById(idsWHO, idsMAL, level = 1) {
     if (level === 1) {
       const whoChildrenIds = _.map(whoOUs[0].children, "id");
       const malChildrenIds = _.map(malOUs[0].children, "id");
-      const whoRoot = addChildrenNumberToOu(whoOUs[0]);
-      const malRoot = addChildrenNumberToOu(malOUs[0]);
-      compareOrganisationUnits([whoRoot, malRoot], 1);
       await fetchOUsById(whoChildrenIds, malChildrenIds, 2);
+      const whoRoot = addChildrenNumberToOu(whoOUs[0], whoOrgUnitTree);
+      const malRoot = addChildrenNumberToOu(malOUs[0], malOrgUnitTree);
+      compareOrganisationUnits([whoRoot, malRoot], 1);
     }
-    await matchAndCompare(whoOUs, malOUs, level);
+    var match_result = await matchAndCompare(whoOUs, malOUs, level)
   } catch (e) {
     console.log(e);
   }
-}
 
+}
 async function matchAndCompare(whoOUs, malOUs, level) {
   const matchedOUs = matchOUs(whoOUs, malOUs, level);
   matchedOUs.matched.forEach(async pair => {
     compareOrganisationUnits(pair, level);
     if (
-      level < MAX_DEPTH &&
-      !_.isEmpty(pair[0].children) &&
-      !_.isEmpty(pair[1].children)
+        level < MAX_DEPTH &&
+        !_.isEmpty(pair[0].children) &&
+        !_.isEmpty(pair[1].children)
     ) {
       await fetchOUsById(
-        _.map(pair[0].children, "id"),
-        _.map(pair[1].children, "id"),
-        level + 1
+          _.map(pair[0].children, "id"),
+          _.map(pair[1].children, "id"),
+          level + 1
       );
     }
   });
@@ -118,9 +135,9 @@ function matchOUs(ouListWHO, ouListMAL, level) {
     ouListWHO.forEach(ou => {
       const name = ou.name;
       const match = _.find(ouListMAL, toMatch => toMatch.name.includes(name));
-      const ouCustom = addChildrenNumberToOu(ou);
+      const ouCustom = addChildrenNumberToOu(ou, whoOrgUnitTree);
       if (match) {
-        const matchCustom = addChildrenNumberToOu(match);
+        const matchCustom = addChildrenNumberToOu(match, malOrgUnitTree);
         result = {
           ...result,
           matched: [...result.matched, [ouCustom, matchCustom]]
@@ -134,9 +151,9 @@ function matchOUs(ouListWHO, ouListMAL, level) {
     ouListMAL.forEach(ou => {
       const name = ou.name.replace("IR - ", "");
       const match = _.find(ouListWHO, toMatch => toMatch.name.includes(name));
-      const ouCustom = addChildrenNumberToOu(ou);
+      const ouCustom = addChildrenNumberToOu(ou, malOrgUnitTree);
       if (match) {
-        const matchCustom = addChildrenNumberToOu(match);
+        const matchCustom = addChildrenNumberToOu(match, whoOrgUnitTree);
         result = {
           ...result,
           matched: [...result.matched, [matchCustom, ouCustom]]
@@ -168,8 +185,78 @@ function compareOrganisationUnits(ouPair, level) {
     [level]: [...resultAccum[level], differences]
   };
 }
+async function updateDataValues() {
+  _.keys(resultAccum).reverse().forEach(level => {
+    resultAccum[level].forEach(pair => {
+      whoId = pair.id[0];
+      malId = pair.id[1];
+      if (!_.isEmpty(whoOrgUnitTree[whoId])) {
+        whoOrgUnitTree[whoId].forEach(child => incrementOUDataValues(whoId, child, whoDataValuesByOu));
+      } else {
+        initialize_count(whoId, whoDataValuesByOu)
+      }
+      if (!_.isEmpty(malOrgUnitTree[malId])) {
+        malOrgUnitTree[malId].forEach(child => incrementOUDataValues(malId, child, malDataValuesByOu));
+      } else {
+        initialize_count(malId, malDataValuesByOu)
+      }
+      pair.dataValues = [whoDataValuesByOu.dataValues[whoId], malDataValuesByOu.dataValues[malId]];
+      pair.programStageInstances = [whoDataValuesByOu.programStageInstances[whoId], malDataValuesByOu.programStageInstances[malId]];
+      pair.trackedEntityInstances = [whoDataValuesByOu.trackedEntityInstances[whoId], malDataValuesByOu.trackedEntityInstances[malId]];
+    });
+  });
+  _.keys(unmatched).reverse().forEach(level => {
+    unmatched[level].forEach(ou => {
+     if (whoOrgUnitTree.hasOwnProperty(ou.id)){
+       if (!_.isEmpty(whoOrgUnitTree[ou.id])) {
+         whoOrgUnitTree[ou.id].forEach(child => incrementOUDataValues(ou.id, child, whoDataValuesByOu));
+       } else {
+         initialize_count(ou.id, whoDataValuesByOu)
+       }
+       ou.dataValues = whoDataValuesByOu.dataValues[ou.id];
+       ou.programStageInstances = whoDataValuesByOu.programStageInstances[ou.id];
+       ou.trackedEntityInstances = whoDataValuesByOu.trackedEntityInstances[ou.id];
+     } else {
+       if (!_.isEmpty(malOrgUnitTree[ou.id])) {
+         malOrgUnitTree[ou.id].forEach(child => incrementOUDataValues(ou.id, child, malDataValuesByOu));
+       } else {
+         initialize_count(ou.id, malDataValuesByOu)
+       }
+       ou.dataValues = malDataValuesByOu.dataValues[ou.id];
+       ou.programStageInstances = malDataValuesByOu.programStageInstances[ou.id];
+       ou.trackedEntityInstances = malDataValuesByOu.trackedEntityInstances[ou.id];
+     }
+    });
+  });
+}
+
+async function addDataValuesCount() {
+  _.keys(resultAccum).forEach(level => {
+    resultAccum[level].forEach(pair => {
+      whoId = pair.id[0];
+      malId = pair.id[1];
+      pair.dataValues = [whoDataValuesByOu.dataValues[whoId], malDataValuesByOu.dataValues[malId]];
+      pair.programStageInstances = [whoDataValuesByOu.programStageInstances[whoId], malDataValuesByOu.programStageInstances[malId]];
+      pair.trackedEntityInstances = [whoDataValuesByOu.trackedEntityInstances[whoId], malDataValuesByOu.trackedEntityInstances[malId]];
+    })
+  });
+  _.keys(unmatched).forEach(level => {
+    unmatched[level].forEach(ou => {
+      if (whoOrgUnitTree.hasOwnProperty(ou.id)){
+        ou.dataValues = whoDataValuesByOu.dataValues[ou.id];
+        ou.programStageInstances = whoDataValuesByOu.programStageInstances[ou.id];
+        ou.trackedEntityInstances = whoDataValuesByOu.trackedEntityInstances[ou.id];
+      } else {
+        ou.dataValues = malDataValuesByOu.dataValues[ou.id];
+        ou.programStageInstances = malDataValuesByOu.programStageInstances[ou.id];
+        ou.trackedEntityInstances = malDataValuesByOu.trackedEntityInstances[ou.id];
+      }
+    })
+  });
+}
 
 async function saveToFiles() {
+  await updateDataValues();
   console.log("Matched by level");
   _.keys(resultAccum).forEach(level =>
     console.log(`${level}: ${resultAccum[level].length}`)
@@ -189,17 +276,26 @@ async function saveToFiles() {
   });
 }
 
-function addChildrenNumberToOu(ou) {
-  return { ...ou, numberOfChildren: ou.children.length };
-}
-
-function incrementOUDataValues(ou, datavalues, trackedEntityInstances, programStageInstances) {
+function addChildrenNumberToOu(ou, sourceTree) {
+  if (!_.isEmpty(ou.children)) {
+    sourceTree[ou.id] = _.map(ou.children, "id");
+  }
   return {
     ...ou,
-    dataValuesCount: ou.hasAttribute(dataValuesCount) ? ou.dataValuesCount + datavalues : datavalues,
-    trackedEntitiesInstancesCount: ou.hasAttribute(trackedEntityInstancesCount) ? ou.trackedEntitiesInstancesCount + trackedEntityInstances : trackedEntityInstances,
-    programStageInstancesCount: ou.hasAttribute(programStageInstancesCount) ? ou.programStageInstancesCount + programStageInstances : programStageInstances
-  }
+    numberOfChildren: ou.children.length
+  };
+}
+
+function incrementOUDataValues(ou, child, source) {
+  source.dataValues[ou] = _.get(source.dataValues, ou, 0) + _.get(source.dataValues, child, 0);
+  source.programStageInstances[ou] = _.get(source.programStageInstances, ou, 0) + _.get(source.programStageInstances, child, 0);
+  source.trackedEntityInstances[ou] = _.get(source.trackedEntityInstances, ou, 0) + _.get(source.trackedEntityInstances, child, 0);
+}
+
+function initialize_count(ou, source) {
+  source.dataValues[ou] = _.get(source.dataValues, ou, 0);
+  source.programStageInstances[ou] = _.get(source.programStageInstances, ou, 0);
+  source.trackedEntityInstances[ou] = _.get(source.trackedEntityInstances, ou, 0);
 }
 
 runComparison();
