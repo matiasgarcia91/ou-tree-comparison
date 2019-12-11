@@ -30,8 +30,8 @@ let resultAccum = { 1: [], 2: [], 3: [], 4: [] };
 const WHO_VIEWS = JSON.parse(argv.whoViews);
 const MAL_VIEWS = JSON.parse(argv.malViews);
 
-let whoDataValuesByOu = { dataValues: {}, trackedEntityInstances: {}, programStageInstances: {}};
-let malDataValuesByOu = { dataValues: {}, trackedEntityInstances: {}, programStageInstances: {}};
+let whoDataValuesByOu = { dataValues: {}, trackedEntityInstances: {}, programStageInstances: {}, childDV: {}, childTEI: {}, childPSI:{}};
+let malDataValuesByOu = { dataValues: {}, trackedEntityInstances: {}, programStageInstances: {}, childDV: {}, childTEI: {}, childPSI:{}};
 let whoOrgUnitTree = {};
 let malOrgUnitTree = {};
 
@@ -200,9 +200,12 @@ async function updateDataValues() {
       } else {
         initialize_count(malId, malDataValuesByOu)
       }
-      pair.dataValues = [whoDataValuesByOu.dataValues[whoId], malDataValuesByOu.dataValues[malId]];
-      pair.programStageInstances = [whoDataValuesByOu.programStageInstances[whoId], malDataValuesByOu.programStageInstances[malId]];
-      pair.trackedEntityInstances = [whoDataValuesByOu.trackedEntityInstances[whoId], malDataValuesByOu.trackedEntityInstances[malId]];
+      pair.dataValues = [whoDataValuesByOu.dataValues[whoId] - whoDataValuesByOu.childDV[whoId], malDataValuesByOu.dataValues[malId] - malDataValuesByOu.childDV[malId]];
+      pair.programStageInstances = [whoDataValuesByOu.programStageInstances[whoId] - whoDataValuesByOu.childPSI[whoId], malDataValuesByOu.programStageInstances[malId] - malDataValuesByOu.childPSI[malId]];
+      pair.trackedEntityInstances = [whoDataValuesByOu.trackedEntityInstances[whoId] - whoDataValuesByOu.childTEI[whoId], malDataValuesByOu.trackedEntityInstances[malId] - malDataValuesByOu.childTEI[malId]];
+      pair.childrenDataValues = [whoDataValuesByOu.childDV[whoId], malDataValuesByOu.childDV[malId]];
+      pair.childrenProgramStageInstances = [whoDataValuesByOu.childPSI[whoId], malDataValuesByOu.childPSI[malId]];
+      pair.childrenTrackedEntityInstances = [whoDataValuesByOu.childTEI[whoId], malDataValuesByOu.childTEI[malId]];
     });
   });
   _.keys(unmatched).reverse().forEach(level => {
@@ -213,18 +216,24 @@ async function updateDataValues() {
        } else {
          initialize_count(ou.id, whoDataValuesByOu)
        }
-       ou.dataValues = whoDataValuesByOu.dataValues[ou.id];
-       ou.programStageInstances = whoDataValuesByOu.programStageInstances[ou.id];
-       ou.trackedEntityInstances = whoDataValuesByOu.trackedEntityInstances[ou.id];
+       ou.dataValues = whoDataValuesByOu.dataValues[ou.id] - whoDataValuesByOu.childDV[ou.id];
+       ou.programStageInstances = whoDataValuesByOu.programStageInstances[ou.id] - whoDataValuesByOu.childPSI[ou.id];
+       ou.trackedEntityInstances = whoDataValuesByOu.trackedEntityInstances[ou.id] - whoDataValuesByOu.childTEI[ou.id];
+       ou.childrenDataValues = whoDataValuesByOu.childDV[ou.id];
+       ou.childrenProgramStageInstances = whoDataValuesByOu.childPSI[ou.id];
+       ou.childrenTrackedEntityInstances = whoDataValuesByOu.childTEI[ou.id];
      } else {
        if (!_.isEmpty(malOrgUnitTree[ou.id])) {
          malOrgUnitTree[ou.id].forEach(child => incrementOUDataValues(ou.id, child, malDataValuesByOu));
        } else {
          initialize_count(ou.id, malDataValuesByOu)
        }
-       ou.dataValues = malDataValuesByOu.dataValues[ou.id];
-       ou.programStageInstances = malDataValuesByOu.programStageInstances[ou.id];
-       ou.trackedEntityInstances = malDataValuesByOu.trackedEntityInstances[ou.id];
+       ou.dataValues = malDataValuesByOu.dataValues[ou.id] - malDataValuesByOu.childDV[ou.id];
+       ou.programStageInstances = malDataValuesByOu.programStageInstances[ou.id] - malDataValuesByOu.childPSI[ou.id];
+       ou.trackedEntityInstances = malDataValuesByOu.trackedEntityInstances[ou.id] - malDataValuesByOu.childTEI[ou.id];
+       ou.childrenDataValues = malDataValuesByOu.childDV[ou.id];
+       ou.childrenProgramStageInstances = malDataValuesByOu.childPSI[ou.id];
+       ou.childrenTrackedEntityInstances = malDataValuesByOu.childTEI[ou.id];
      }
     });
   });
@@ -287,12 +296,20 @@ function addChildrenNumberToOu(ou, sourceTree) {
 }
 
 function incrementOUDataValues(ou, child, source) {
+  source.childDV[ou] = _.get(source.childDV, ou, 0) + _.get(source.dataValues, child, 0);
+  source.childPSI[ou] = _.get(source.childPSI, ou, 0) + _.get(source.programStageInstances, child, 0);
+  source.childTEI[ou] = _.get(source.childTEI, ou, 0) + _.get(source.trackedEntityInstances, child, 0);
+
   source.dataValues[ou] = _.get(source.dataValues, ou, 0) + _.get(source.dataValues, child, 0);
   source.programStageInstances[ou] = _.get(source.programStageInstances, ou, 0) + _.get(source.programStageInstances, child, 0);
   source.trackedEntityInstances[ou] = _.get(source.trackedEntityInstances, ou, 0) + _.get(source.trackedEntityInstances, child, 0);
 }
 
 function initialize_count(ou, source) {
+  source.childDV[ou] = 0;
+  source.childPSI[ou] = 0;
+  source.childTEI[ou] = 0;
+
   source.dataValues[ou] = _.get(source.dataValues, ou, 0);
   source.programStageInstances[ou] = _.get(source.programStageInstances, ou, 0);
   source.trackedEntityInstances[ou] = _.get(source.trackedEntityInstances, ou, 0);

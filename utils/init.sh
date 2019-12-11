@@ -110,4 +110,4 @@ init_variables
 post_who_sql_views
 post_mal_sql_views
 run_comparison
-#delete_sql_views
+delete_sql_views
