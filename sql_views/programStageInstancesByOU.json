@@ -1,0 +1,7 @@
+{
+  "sqlQuery": "select ou.uid, count(*) from programstageinstance psi inner join organisationunit ou on (ou.organisationunitid = psi.organisationunitid) where (ou.hierarchyLevel <= 5) group by ou.uid;",
+  "description": "Query gathering all the porgram stage instances per organisation unit id.",
+  "type": "QUERY",
+  "name": "programStageInstancesByOU",
+  "cacheStrategy": "NO_CACHE"
+}

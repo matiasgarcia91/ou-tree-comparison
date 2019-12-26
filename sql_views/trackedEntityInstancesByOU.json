@@ -1,0 +1,7 @@
+{
+  "sqlQuery": "select ou.uid, COUNT(*) from trackedentityinstance t inner join organisationunit ou on (ou.organisationunitid = t.organisationunitid) where (ou.hierarchyLevel <= 5) group by ou.uid;",
+  "description": "Query gathering all the tracked entity instances per organisation unit id.",
+  "type": "QUERY",
+  "name": "trackedEntityInstancesByOU",
+  "cacheStrategy": "NO_CACHE"
+}
